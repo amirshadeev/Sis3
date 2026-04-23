@@ -1,0 +1,66 @@
+version: "3.9"
+
+services:
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.11.3
+    container_name: mlflow
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlflow_data:/mlflow
+    command: >
+      mlflow server
+        --host 0.0.0.0
+        --port 5000
+        --backend-store-uri sqlite:///mlflow/mlflow.db
+        --default-artifact-root /mlflow/artifacts
+    networks:
+      - ml-net
+
+  trainer:
+    build:
+      context: .
+      dockerfile: Dockerfile.trainer
+    container_name: trainer
+    depends_on:
+      - mlflow
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    volumes:
+      - ./model:/app/model        # модель сохраняется в папку sis3/model/
+    networks:
+      - ml-net
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: api
+    ports:
+      - "8000:8000"
+    depends_on:
+      - trainer
+    volumes:
+      - ./model:/app/model        # api читает из той же папки
+    networks:
+      - ml-net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: frontend
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
+    environment:
+      - API_URL=http://api:8000
+      - MLFLOW_URL=http://localhost:5000
+    networks:
+      - ml-net
+
+networks:
+  ml-net:
+    driver: bridge
